@@ -113,7 +113,13 @@ make -C nuttx olddefconfig
 make -C nuttx -j8
 ```
 
-产物：`nuttx/vela_nsh.bin`（以及 `vendor/allwinnertech/lichee/board/r528s3/velaevb1_nand/configs/nsh.fex`）。
+产物：**`nuttx/nuttx.bin`**（约 4.5 MB，可烧录镜像），同时被拷成
+`vendor/allwinnertech/lichee/board/r528s3/velaevb1_nand/configs/nsh.fex`。
+另有 `nuttx/vela_nsh.elf` 与 `vela_nsh.map` 供调试。
+
+> 注意：**不会生成 `vela_nsh.bin`。** nuttx 的 Makefile 里 `VELA_ELF` 那条规则
+> 只对 `ap` / `tee` / `ota` / `factest` / `bl` 几种配置赋值，本配置是 `nsh`，
+> 直接落到 else 分支不产生该文件。要找镜像请用 `nuttx/nuttx.bin`。
 
 > **为什么不是 `./build.sh <路径>`？**
 > `nuttx/tools/configure.sh` 要求 board config 目录旁边能找到一份 `Make.defs`
