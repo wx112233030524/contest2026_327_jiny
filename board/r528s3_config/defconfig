@@ -200,6 +200,39 @@ CONFIG_DRVR_READAHEAD=y
 CONFIG_DRVR_WRITEBUFFER=y
 CONFIG_ELF=y
 CONFIG_ETC_ROMFS=y
+# On-board ai_agent -- this is what makes FOCPilot's runtime Skill mean
+# anything: the agent reads /data/agent/skills/*.md at boot and can then drive
+# the tuner by itself.  Was not in the vendor config, so it has to be turned on
+# explicitly.
+CONFIG_EXAMPLES_AI_AGENT_VELA=y
+# Pinned to match packages/ai_agent's docs and the contest guide.  The Kconfig
+# default is "/data/ai_agent", which contradicts both -- pinning here keeps the
+# path in the guide, the docs and our app in agreement.
+CONFIG_EXAMPLES_AI_AGENT_VELA_DATA_DIR="/data/agent"
+# FULL: ALLOWLIST mode cannot reach ai_tuner_can/focscope (they are not in
+# s_allowed[]), so the Skill's only verb would be dead.  Demo-critical.
+# CONFIG_EXAMPLES_AI_AGENT_VELA_SHELL_ALLOWLIST is not set
+CONFIG_EXAMPLES_AI_AGENT_VELA_SHELL_FULL=y
+# FULL mode runs commands through popen(), and without CONFIG_SYSTEM_POPEN the
+# agent's run_shell compiles down to "popen not available" -- the Skill would
+# look installed but every command would fail.  Requires NSH_LIBRARY + PIPES,
+# both already on.
+CONFIG_SYSTEM_POPEN=y
+# Chat over the NSH console (`ask <text>`) is the channel we demo with.
+# The cloud channels are off: they need accounts we do not have on the board
+# and only cost flash.
+# CONFIG_AI_AGENT_FEISHU is not set
+# CONFIG_AI_AGENT_WEIXIN is not set
+# CONFIG_AI_AGENT_MQTT is not set
+# CONFIG_AI_AGENT_NODE is not set
+# CONFIG_AI_AGENT_MCP is not set
+# CONFIG_AI_AGENT_BLE_GATT is not set
+# CONFIG_AI_AGENT_BLE_NET is not set
+# CONFIG_AI_AGENT_REST_API is not set
+# CONFIG_AI_AGENT_SKILL_SYNC is not set
+# CONFIG_AI_AGENT_CAMERA is not set
+# CONFIG_AI_AGENT_NET_RPMSG is not set
+# CONFIG_AI_AGENT_TEST is not set
 CONFIG_EXAMPLES_CANTEST=y
 CONFIG_EXAMPLES_CONTROL_CENTER=y
 CONFIG_EXAMPLES_CONTROL_CENTER_STACKSIZE=40960

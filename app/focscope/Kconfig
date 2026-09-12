@@ -47,6 +47,19 @@ config EXAMPLES_FOCSCOPE_AI_TEST_STACKSIZE
 
 endif # EXAMPLES_FOCSCOPE_AI_TEST
 
+config EXAMPLES_FOCSCOPE_AGENT_DATA_DIR
+	string "ai_agent data directory"
+	default EXAMPLES_AI_AGENT_VELA_DATA_DIR if EXAMPLES_AI_AGENT_VELA
+	default "/data/agent"
+	---help---
+		Directory the on-board ai_agent keeps its state in.  FOCPilot
+		writes its runtime Skill and its tune result there, because
+		ai_agent's read_file/write_file tools refuse to touch anything
+		outside this directory.
+
+		Default follows ai_agent's own option so the two can not
+		diverge.  Only override this if you also override that one.
+
 config EXAMPLES_FOCSCOPE_AI_TUNER_CAN
 	tristate "AI Tuner CAN app"
 	default n

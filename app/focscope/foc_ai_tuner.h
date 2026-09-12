@@ -12,6 +12,7 @@
 #define __FOC_AI_TUNER_H
 
 #include <nuttx/config.h>
+#include <nuttx/compiler.h>   /* FAR */
 
 /****************************************************************************
  * Public Types
@@ -47,6 +48,7 @@ typedef struct
 #define FOC_AI_ERR_HTTP_CODE   -2   /* HTTP 非 200 */
 #define FOC_AI_ERR_PARSE       -3   /* AI 响应解析失败 (content 为空) */
 #define FOC_AI_ERR_WHITELIST   -4   /* PI 越限, 白名单校验失败 */
+#define FOC_AI_ERR_NO_KEY      -5   /* 源码里的 MIMO_API_KEY 还是占位符 */
 
 /****************************************************************************
  * Public Functions

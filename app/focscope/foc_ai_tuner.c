@@ -15,9 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <netdb.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
+#include <sys/stat.h>
 #include <curl/curl.h>
 
 #include "foc_ai_tuner.h"
@@ -37,6 +35,21 @@
 
 #define FOC_AI_HTTP_TIMEOUT   300L
 #define FOC_AI_RESP_SIZE      131072
+
+/* 整定结果的机器可读落盘位置。
+ * 必须落在 ai_agent 的数据目录里 —— 它的 read_file 被限制在该目录内
+ * (packages/ai_agent/src/tools/tool_files.c 的 validate_path), 放别处 agent
+ * 读不到, 运行时 Skill 就拿不到结果。
+ *
+ * 目录跟着 CONFIG_EXAMPLES_FOCSCOPE_AGENT_DATA_DIR 走 (见 foc_agent_skill.c),
+ * 不在这里写死字面量。 */
+
+#ifndef CONFIG_EXAMPLES_FOCSCOPE_AGENT_DATA_DIR
+#  define CONFIG_EXAMPLES_FOCSCOPE_AGENT_DATA_DIR "/data/agent"
+#endif
+
+#define FOC_AI_RESULT_FILE \
+    CONFIG_EXAMPLES_FOCSCOPE_AGENT_DATA_DIR "/tune_result.json"
 
 /****************************************************************************
  * Private Data
@@ -201,6 +214,75 @@ static int parse_ai_response(const char *response, FAR pi_params_t *pi)
 }
 
 /****************************************************************************
+ * Name: foc_ai_write_result
+ *
+ * Description:
+ *   把整定结果写成 JSON 落到 /data/agent/tune_result.json, 供板载 ai_agent
+ *   用 read_file 读取。
+ *
+ *   无论成功还是失败都写 —— agent 靠 status 字段决定怎么回复用户, 所以
+ *   "白名单拒绝" 和 "网络失败" 必须是能被区分出来的不同状态。
+ *
+ * Input Parameters:
+ *   status  - ok / whitelist_fail / parse_fail / http_fail /
+ *             http_code_fail / init_fail / no_key
+ *   message - 给人和 agent 看的一句话说明
+ *   motor   - 电机参数 (可为 NULL)
+ *   usage   - 用途编号
+ *   pi      - PI 结果 (失败时为 NULL, 不写 pi 段)
+ *
+ ****************************************************************************/
+
+static void foc_ai_write_result(FAR const char *status,
+                                FAR const char *message,
+                                FAR motor_params_t *motor, int usage,
+                                FAR pi_params_t *pi)
+{
+    FILE *fp;
+
+    (void)mkdir(CONFIG_EXAMPLES_FOCSCOPE_AGENT_DATA_DIR, 0755);
+
+    fp = fopen(FOC_AI_RESULT_FILE, "w");
+    if (fp == NULL)
+    {
+        printf("[AI] 无法写入 %s (errno=%d)\n", FOC_AI_RESULT_FILE, errno);
+        return;
+    }
+
+    fprintf(fp, "{\n");
+    fprintf(fp, "  \"status\": \"%s\",\n", status);
+    fprintf(fp, "  \"message\": \"%s\",\n", message);
+
+    if (motor != NULL)
+    {
+        fprintf(fp,
+                "  \"motor\": { \"Rs\": %.6f, \"Ld\": %.6f, \"Lq\": %.6f, "
+                "\"Ke\": %.6f, \"poles\": %d },\n",
+                motor->Rs, motor->Ld, motor->Lq, motor->Ke, motor->poles);
+        fprintf(fp, "  \"usage\": %d,\n", usage);
+    }
+
+    if (pi != NULL)
+    {
+        fprintf(fp, "  \"pi\": {\n");
+        fprintf(fp, "    \"Kp_Id\": %.6f, \"Ki_Id\": %.6f,\n",
+                pi->Kp_Id, pi->Ki_Id);
+        fprintf(fp, "    \"Kp_Iq\": %.6f, \"Ki_Iq\": %.6f,\n",
+                pi->Kp_Iq, pi->Ki_Iq);
+        fprintf(fp, "    \"Kp_Speed\": %.6f, \"Ki_Speed\": %.6f\n",
+                pi->Kp_Speed, pi->Ki_Speed);
+        fprintf(fp, "  },\n");
+    }
+
+    fprintf(fp, "  \"raw_log\": \"/data/ai_result.txt\"\n");
+    fprintf(fp, "}\n");
+
+    fclose(fp);
+
+    printf("[AI] 结果已写入 %s (status=%s)\n", FOC_AI_RESULT_FILE, status);
+}
+
+/****************************************************************************
  * Public Functions
  ****************************************************************************/
 
@@ -216,60 +298,33 @@ int foc_ai_tune(FAR motor_params_t *motor, int usage, FAR pi_params_t *pi)
     g_response_len = 0;
     g_response[0] = '\0';
 
+    /* 占位符 key 快速失败。本仓库是公开的, 源码里只留占位符; 没填就编译进来时
+     * 与其让服务端返回 401, 不如在这里给出明确提示 —— 也让运行时 Skill 有一
+     * 个专门的状态码可以照着回复用户。 */
+
+    if (strcmp(MIMO_API_KEY, "YOUR_MIMO_API_KEY") == 0)
+    {
+        printf("[AI] 未配置 MiMo API key "
+               "(foc_ai_tuner.c 中的 MIMO_API_KEY)\n");
+        foc_ai_write_result("no_key",
+                            "未配置 MiMo API key: 请在 foc_ai_tuner.c 中填入 "
+                            "MIMO_API_KEY 后重新编译",
+                            motor, usage, NULL);
+        return FOC_AI_ERR_NO_KEY;
+    }
+
     build_prompt(prompt, sizeof(prompt), motor, usage);
 
     printf("[AI] 发送请求到 MiMo API...\n");
     printf("[AI] Rs=%.6f Ld=%.6f Lq=%.6f Ke=%.6f poles=%d usage=%d\n",
            motor->Rs, motor->Ld, motor->Lq, motor->Ke, motor->poles, usage);
 
-    /* Temp diagnostic: resolve the API host directly through the NuttX
-     * resolver (getaddrinfo is exactly what cURL uses).  This separates
-     * "resolver / DNS / route" from "cURL / TLS". */
-    {
-      struct addrinfo hints;
-      struct addrinfo *res = NULL;
-      struct sockaddr_in *sa4;
-      char ipbuf[INET_ADDRSTRLEN] = "?";
-      char rl[128];
-      FILE *rf;
-      int g;
-
-      rf = fopen("/tmp/resolv.conf", "r");
-      if (rf)
-        {
-          while (fgets(rl, sizeof(rl), rf))
-            {
-              rl[strcspn(rl, "\n")] = '\0';
-              printf("[AI-DNS] resolv: %s\n", rl);
-            }
-          fclose(rf);
-        }
-      else
-        {
-          printf("[AI-DNS] no /tmp/resolv.conf\n");
-        }
-
-      memset(&hints, 0, sizeof(hints));
-      hints.ai_family = AF_INET;
-      hints.ai_socktype = SOCK_STREAM;
-      g = getaddrinfo("token-plan-cn.xiaomimimo.com", NULL, &hints, &res);
-      if (g == 0 && res)
-        {
-          sa4 = (struct sockaddr_in *)res->ai_addr;
-          inet_ntop(AF_INET, &sa4->sin_addr, ipbuf, sizeof(ipbuf));
-          printf("[AI-DNS] getaddrinfo OK -> %s\n", ipbuf);
-          freeaddrinfo(res);
-        }
-      else
-        {
-          printf("[AI-DNS] getaddrinfo FAILED gai=%d errno=%d\n", g, errno);
-        }
-    }
-
     curl = curl_easy_init();
     if (!curl)
     {
         printf("[AI] curl_easy_init() 失败\n");
+        foc_ai_write_result("init_fail", "curl 初始化失败, 板子上无法发起 HTTP 请求",
+                            motor, usage, NULL);
         return FOC_AI_ERR_HTTP;
     }
 
@@ -291,9 +346,16 @@ int foc_ai_tune(FAR motor_params_t *motor, int usage, FAR pi_params_t *pi)
 
     if (res != CURLE_OK)
     {
-        printf("[AI] HTTP 请求失败: %s\n", curl_easy_strerror(res));
+        char msg[160];
+        FAR const char *err = curl_easy_strerror(res);
+
+        printf("[AI] HTTP 请求失败: %s\n", err);
+        snprintf(msg, sizeof(msg), "HTTP 请求失败: %s", err);
+
         curl_slist_free_all(headers);
         curl_easy_cleanup(curl);
+
+        foc_ai_write_result("http_fail", msg, motor, usage, NULL);
         return FOC_AI_ERR_HTTP;
     }
 
@@ -305,7 +367,14 @@ int foc_ai_tune(FAR motor_params_t *motor, int usage, FAR pi_params_t *pi)
 
     if (http_code != 200)
     {
+        char msg[128];
+
         printf("[AI] HTTP 错误: %ld\n", http_code);
+        snprintf(msg, sizeof(msg),
+                 "MiMo API 返回 HTTP %ld (401 表示 key 无效, 429 表示额度/"
+                 "频率超限)", http_code);
+
+        foc_ai_write_result("http_code_fail", msg, motor, usage, NULL);
         return FOC_AI_ERR_HTTP_CODE;
     }
 
@@ -335,6 +404,9 @@ int foc_ai_tune(FAR motor_params_t *motor, int usage, FAR pi_params_t *pi)
     {
         printf("==== AI PARSE FAILED ret=%d (see /data/ai_result.txt) ====\n",
                ret);
+        foc_ai_write_result("parse_fail",
+                            "AI 响应里没有解析出有效的 PI 参数 (原始响应见 "
+                            "/data/ai_result.txt)", motor, usage, NULL);
         return FOC_AI_ERR_PARSE;
     }
 
@@ -342,6 +414,10 @@ int foc_ai_tune(FAR motor_params_t *motor, int usage, FAR pi_params_t *pi)
     if (foc_ai_validate(pi, motor) != 0)
     {
         printf("==== AI WHITELIST REJECTED ====\n");
+        foc_ai_write_result("whitelist_fail",
+                            "AI 给出的 PI 参数超出理论值 50%~150% 的安全范围, "
+                            "已拒绝; 电机参数可能有误, 请核对后重试",
+                            motor, usage, pi);
         return FOC_AI_ERR_WHITELIST;
     }
 
@@ -360,6 +436,28 @@ int foc_ai_tune(FAR motor_params_t *motor, int usage, FAR pi_params_t *pi)
                     pi->Kp_Speed, pi->Ki_Speed);
             fclose(rf);
         }
+    }
+
+    /* 落一份机器可读的最终结果给板载 ai_agent。
+     * 这一步必须在白名单校验之后 —— 只有校验通过的 PI 才允许写进 status=ok
+     * 的结果文件, 否则 agent 会把没通过安全校验的参数当成可用参数报给用户。 */
+
+    {
+        const char *usage_name;
+        char msg[160];
+
+        switch (usage)
+        {
+            case FOC_USAGE_GIMBAL: usage_name = "云台";       break;
+            case FOC_USAGE_AERO:   usage_name = "航模";       break;
+            case FOC_USAGE_ROBOT:  usage_name = "机器人关节"; break;
+            default:               usage_name = "通用";       break;
+        }
+
+        snprintf(msg, sizeof(msg),
+                 "整定成功, 已通过白名单校验 (%s模式)", usage_name);
+
+        foc_ai_write_result("ok", msg, motor, usage, pi);
     }
 
     printf("====>> AI TUNE OK <<====\n");

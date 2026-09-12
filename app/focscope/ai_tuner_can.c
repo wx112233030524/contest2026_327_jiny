@@ -27,6 +27,7 @@
 
 #include "foc_ai_tuner.h"
 #include "focpilot_can_proto.h"
+#include "foc_agent_skill.h"
 
 /****************************************************************************
  * Pre-processor Definitions
@@ -105,7 +106,6 @@ static void tune_once(int fd)
     while (!(have_req && have_rs_ld && have_lq_ke && have_poles))
     {
         ssize_t nbytes;
-        int i;
 
         memset(&msg, 0, sizeof(msg));
         nbytes = read(fd, &msg, CAN_MSGLEN(AI_TUNER_MAX_DLC));
@@ -216,6 +216,11 @@ int main(int argc, FAR char *argv[])
     }
 
     curl_global_init(CURL_GLOBAL_DEFAULT);
+
+    /* focscope 开机时已经装过一遍, 这里是兜底: 万一 agent 直接拉起本程序而
+     * focscope 没跑过, Skill 也得在位。内容一致时不做任何写入。 */
+
+    foc_agent_skill_install();
 
     /* 循环处理整定请求 */
     while (1)

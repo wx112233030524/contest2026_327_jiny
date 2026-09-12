@@ -29,6 +29,7 @@
 #include "scope_ui.h"
 #include "ai_tuner_ui.h"
 #include "wifi_ui.h"
+#include "foc_agent_skill.h"
 
 /****************************************************************************
  * Pre-processor Definitions
@@ -161,6 +162,16 @@ int main(int argc, FAR char *argv[])
   scope_ds_t ds;
   bool use_can = false;
   int can_port = 0;
+
+  /* Install our runtime Skill for the on-board ai_agent before doing anything
+   * else. This has to happen at boot from a program that always runs, not
+   * from ai_tuner_can: the agent can only ask for a tune once it has already
+   * read the Skill telling it how, so installing it from the tuner itself
+   * would be a chicken-and-egg problem.
+   *
+   * Cheap on every subsequent boot: identical content is not rewritten. */
+
+  foc_agent_skill_install();
 
   /* Data source selection:
    *   focscope          - simulated waveforms (default)

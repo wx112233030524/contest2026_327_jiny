@@ -82,7 +82,9 @@ contest2026_327_jiny/
 
 **生产仓库零改动。** `apps/examples/Make.defs` 本身是 `include $(wildcard $(APPDIR)/examples/*/Make.defs)`，`apps/examples/Kconfig` 由 `apps/tools/mkkconfig.sh` 自动生成——所以新目录放进去就被自动发现，不需要动 `apps/` 里任何一行代码。
 
-板级配置 `board/r528s3_config/defconfig` **不做软链**：openvela 的 `build.sh` 接受任意 board config 路径，直接把它作为参数传进去即可。
+`<linkfile>` 只在下一次 `repo sync` 时生效。如果你改过 manifest，记得重跑一次 `repo sync`，否则 `apps/examples/focscope` 不会出现。
+
+板级配置 `board/r528s3_config/defconfig` **不做软链**，见下面的编译说明。
 
 ---
 
@@ -101,15 +103,39 @@ repo sync -c -j8
 在 openvela 工作区**根目录**（即本仓的上一级）：
 
 ```bash
-./build.sh contest2026_327_jiny/board/r528s3_config
+cp contest2026_327_jiny/board/r528s3_config/defconfig nuttx/.config
+make -C nuttx olddefconfig
+make -C nuttx -j8
 ```
 
 产物：`nuttx/vela_nsh.bin`（以及 `vendor/allwinnertech/lichee/board/r528s3/velaevb1_nand/configs/nsh.fex`）。
 
+> **为什么不是 `./build.sh <路径>`？**
+> `nuttx/tools/configure.sh` 要求 board config 目录旁边能找到一份 `Make.defs`
+> （`<configdir>/Make.defs`、`<configdir>/../../scripts/Make.defs` 或
+> `<configdir>/../../../common/scripts/Make.defs` 三者之一）。本仓的
+> `board/r528s3_config/` 是仓外目录，三者都没有，于是 configure.sh 直接以
+> `File Make.defs could not be found` 退出——`build.sh` 的后半段根本不会执行。
+> 上面三条命令就是 `configure.sh` 实际做的配置动作（把 defconfig 放进
+> `nuttx/.config` 再 olddefconfig）；`Make.defs` 与链接脚本由上一次
+> `lunch_nuttx` 配置留在原处，仍然有效。
+>
+> 想走厂商那条路也可以：把 `board/r528s3_config/defconfig` 覆盖到
+> `vendor/allwinnertech/boards/r528/r528s3-velaevb1/configs/nsh/defconfig`
+> （该目录有 `../../scripts/Make.defs`，configure.sh 能用），然后
+> ```bash
+> source vendor/allwinnertech/lichee/envsetup.sh
+> lunch_nuttx r528s3-velaevb1
+> make -C nuttx -j8
+> ```
+> 这条路径会改动 vendor 仓里的一个文件，介意的话用上面那三条命令。
+
 > 本仓的 `defconfig` 已开好全部所需选项，**无需再跑 menuconfig**：
 > `CONFIG_EXAMPLES_FOCSCOPE=y`、`CONFIG_EXAMPLES_FOCSCOPE_AI_TEST=y`、
 > `CONFIG_EXAMPLES_FOCSCOPE_AI_TUNER_CAN=y`、`CONFIG_R528_CAN=y`、
-> `CONFIG_GRAPHICS_LVGL=y`、`CONFIG_LIB_CURL=y`、`CONFIG_IEEE80211_REALTEK_WIFI_RTL8733BS=y`
+> `CONFIG_GRAPHICS_LVGL=y`、`CONFIG_LIB_CURL=y`、`CONFIG_IEEE80211_REALTEK_WIFI_RTL8733BS=y`，
+> 以及运行时 Skill 需要的 `CONFIG_EXAMPLES_AI_AGENT_VELA=y`、
+> `CONFIG_EXAMPLES_AI_AGENT_VELA_SHELL_FULL=y`、`CONFIG_SYSTEM_POPEN=y`。
 
 ### 3. 烧录与运行
 
@@ -188,6 +214,10 @@ nsh> ai_tuner_can 0
 - ✅ CAN 通信打通，500 kbps 下稳定接收遥测帧（时序经示波器实测校准）
 - ✅ WiFi 连接（板载 RTL8733BS）
 - ✅ MiMo API 调用成功返回 PI 参数，白名单校验生效
+
+> 上面最后一条是**填入真实 key 后**在真机上验证的。本仓公开，源码里只保留占位符
+> `YOUR_MIMO_API_KEY`，所以直接编译出来的固件跑到这一步会返回 `no_key` 状态并给出
+> 提示，而不是静默失败——这是有意设计的默认行为，不是故障。
 
 **已知限制：**
 

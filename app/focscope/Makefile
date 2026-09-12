@@ -17,7 +17,8 @@ MODULE    = $(CONFIG_EXAMPLES_FOCSCOPE)
 
 MAINSRC = focscope.c
 CSRCS   = scope_ui.c scope_data_sim.c scope_data_can.c font_puhui_20_4.c \
-          ai_tuner_ui.c foc_ai_tuner.c wifi_ui.c
+          ai_tuner_ui.c foc_ai_tuner.c wifi_ui.c \
+          foc_agent_skill.c foc_agent_skill_data.c
 endif
 
 # AI Tuner test program (command-line, shares foc_ai_tuner.c)
@@ -48,7 +49,7 @@ endif
 ifneq ($(CONFIG_EXAMPLES_FOCSCOPE),)
 else
 ifneq ($(CONFIG_EXAMPLES_FOCSCOPE_AI_TEST)$(CONFIG_EXAMPLES_FOCSCOPE_AI_TUNER_CAN),)
-CSRCS   += foc_ai_tuner.c
+CSRCS   += foc_ai_tuner.c foc_agent_skill.c foc_agent_skill_data.c
 endif
 endif
 

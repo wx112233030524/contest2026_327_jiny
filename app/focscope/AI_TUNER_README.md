@@ -127,3 +127,54 @@ PI 参数必须在理论值的 50% ~ 150% 范围内：
 1. 添加 "AI 调试" 按钮到 UI
 2. 实现 Profiler 触发和结果接收
 3. 实现 PI 参数下发到驱动板
+
+## 运行时 Skill（板载 ai_agent）
+
+`agent_skill/motor-tuning.md` 是给板载 `ai_agent` 用的运行时 Skill：装到
+`/data/agent/skills/` 之后，用户可以用自然语言（"帮我整定这台电机"）驱动整定，
+agent 自己会去调 `ai_tuner_test` 并读回结果。
+
+### 装配链路
+
+```text
+agent_skill/motor-tuning.md     ← 人写的源文件
+        │  python3 agent_skill/gen_c_string.py
+        ▼
+foc_agent_skill_data.c          ← 自动生成, 编进固件
+        │  focscope 启动时调用 foc_agent_skill_install()
+        ▼
+/data/agent/skills/motor-tuning.md
+        │  ai_agent 启动时扫描该目录并读标题
+        ▼
+系统提示词的 Skills 摘要条目 → 模型据此决定要不要读全文
+```
+
+`ai_agent` 自带 10 个内置 Skill，但它的 `skill_loader.c` 只在启动时安装自己
+硬编码的那 10 个字符串，**不会**扫描仓库——所以外部 Skill 必须由我们自己的
+应用在运行时写进去。
+
+### 为什么 Skill 描述紧贴标题
+
+`skill_loader.c` 的 `extract_description()` 从标题行之后开始读，遇到第一个空行
+就停。而它自己内置的 Skill、以及一般人写 Markdown 的习惯，都是标题下面空一行，
+于是描述恒为空字符串——那个"跳过前导空行"的分支写在 break 判断之后，永远执行
+不到（见 `skill_loader.c` 中 `if (off == 0 && line[0] == '\n') continue;`，
+被上一行的 break 挡住了）。
+
+所以这里的写法是**标题行下面直接接描述行，中间不空行**，并在描述之后用 HTML
+注释留了一份说明。这是绕过上游缺陷的写法；上游修好之后可以改回常规排版。
+
+### 摘要预算只有 1023 字节
+
+`context_builder.c` 用 1024 字节的栈缓冲装全部 Skill 的摘要条目
+（`skill_loader_build_summary`），装不下就**静默丢弃**后面的条目。10 个内置
+Skill 占 784 字节，本 Skill 的条目 203 字节，合计 987/1023——能装下，但余量
+只有 36 字节，再加一个 Skill 就会被挤掉。
+
+### 触发链路依赖 FULL shell 模式
+
+Skill 让 agent 用 `run_shell` 跑 `ai_tuner_test`，而 `ai_tuner_test` 不在
+`run_shell` 默认 ALLOWLIST 的 58 个命令里。板级 defconfig 因此开了
+`CONFIG_EXAMPLES_AI_AGENT_VELA_SHELL_FULL=y`，并且必须同时开
+`CONFIG_SYSTEM_POPEN=y`——FULL 模式走 `popen()`，没开这个选项时
+`run_shell` 会编译成 "popen not available"，Skill 看起来装好了但每条命令都失败。
