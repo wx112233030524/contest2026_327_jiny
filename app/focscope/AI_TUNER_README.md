@@ -177,6 +177,18 @@ foc_agent_skill_data.c          ← 自动生成, 编进固件
 Skill 占 784 字节，本 Skill 的条目 203 字节，合计 987/1023——能装下，但余量
 只有 36 字节，再加一个 Skill 就会被挤掉。
 
+**只有标题行和描述行进摘要，正文不进。** `skill_loader_build_summary()` 的
+条目格式是：
+
+```c
+off += snprintf(buf + off, size - off,
+    "- **%s**: %s (read with: read_file %s)\n", title, desc, full_path);
+```
+
+`title` 来自第 1 行，`desc` 来自 `extract_description()`（第 2 行起、遇空行止）。
+所以**改 Skill 正文不影响这 1023 字节的预算**，只有动标题/描述/文件名才会。
+想加内容就加在正文里；预算只在你需要多个 Skill 时才紧。
+
 ### 触发链路依赖 FULL shell 模式
 
 Skill 让 agent 用 `run_shell` 跑 `ai_tuner_test`，而 `ai_tuner_test` 不在
