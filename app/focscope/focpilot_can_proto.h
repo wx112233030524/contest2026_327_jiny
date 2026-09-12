@@ -21,7 +21,7 @@
 #define FOC_CAN_ID_PARAM_REQ      0x101   /* 请求整定 + 用途 */
 #define FOC_CAN_ID_PARAM_RS_LD    0x102   /* Rs, Ld  (float x2) */
 #define FOC_CAN_ID_PARAM_LQ_KE    0x103   /* Lq, Ke  (float x2) */
-#define FOC_CAN_ID_PARAM_POLES    0x104   /* poles, usage (u8 x2) */
+#define FOC_CAN_ID_PARAM_POLES    0x104   /* poles (u8), data[1] 保留; usage 在 0x101 */
 
 /* R528 -> STM32 (整定结果) */
 #define FOC_CAN_ID_TUNE_STATUS    0x201   /* 整定状态 */
