@@ -1,0 +1,68 @@
+{
+  "schema_version": "1.0",
+  "team_id": "contest2026_327_jiny",
+  "github_login": "wx112233030524",
+  "generator": "claude-code-collector@1.3.0",
+  "updated_at": "2026-09-12T06:29:13.208Z",
+  "sessions": [
+    {
+      "session_id": "2839e924-1d0e-4af5-96fa-033d25d8be40",
+      "tool": "claude-code",
+      "started_at": "2026-09-12T06:29:11.229Z",
+      "last_event_at": "2026-09-12T06:29:11.229Z",
+      "event_count": 28,
+      "raw_event_count": 54,
+      "file_path": "logs/wx112233030524/2026-09-12/claude-code__2839e924-1d0e-4af5-96fa-033d25d8be40.jsonl",
+      "collection_mode": "cli",
+      "health": "ok",
+      "model": "<synthetic>"
+    },
+    {
+      "session_id": "450951db-7abd-4533-846e-17a694526cc7",
+      "tool": "claude-code",
+      "started_at": "2026-09-12T06:29:12.227Z",
+      "last_event_at": "2026-09-12T06:29:12.227Z",
+      "event_count": 8269,
+      "raw_event_count": 15869,
+      "file_path": "logs/wx112233030524/2026-09-12/claude-code__450951db-7abd-4533-846e-17a694526cc7.jsonl",
+      "collection_mode": "cli",
+      "health": "ok",
+      "model": "deepseek-flash"
+    },
+    {
+      "session_id": "b6e4647c-cf00-407c-9cbf-7dfeefa5bc26",
+      "tool": "claude-code",
+      "started_at": "2026-09-12T06:29:12.617Z",
+      "last_event_at": "2026-09-12T06:29:12.617Z",
+      "event_count": 4,
+      "raw_event_count": 13,
+      "file_path": "logs/wx112233030524/2026-09-12/claude-code__b6e4647c-cf00-407c-9cbf-7dfeefa5bc26.jsonl",
+      "collection_mode": "cli",
+      "health": "ok",
+      "model": "<synthetic>"
+    },
+    {
+      "session_id": "c4ab6738-9538-4422-9bef-a1a0e09ccf97",
+      "tool": "claude-code",
+      "started_at": "2026-09-12T06:29:12.660Z",
+      "last_event_at": "2026-09-12T06:29:12.660Z",
+      "event_count": 3,
+      "raw_event_count": 6,
+      "file_path": "logs/wx112233030524/2026-09-12/claude-code__c4ab6738-9538-4422-9bef-a1a0e09ccf97.jsonl",
+      "collection_mode": "cli",
+      "health": "ok"
+    },
+    {
+      "session_id": "d88ee051-0398-4d67-8bdc-47835a6f2490",
+      "tool": "claude-code",
+      "started_at": "2026-09-12T06:29:13.207Z",
+      "last_event_at": "2026-09-12T06:29:13.207Z",
+      "event_count": 5100,
+      "raw_event_count": 9327,
+      "file_path": "logs/wx112233030524/2026-09-12/claude-code__d88ee051-0398-4d67-8bdc-47835a6f2490.jsonl",
+      "collection_mode": "cli",
+      "health": "ok",
+      "model": "deepseek-v4-pro"
+    }
+  ]
+}

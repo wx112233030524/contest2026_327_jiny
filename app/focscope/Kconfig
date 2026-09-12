@@ -1,0 +1,72 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+menuconfig EXAMPLES_FOCSCOPE
+	tristate "FOC Scope (LVGL oscilloscope)"
+	default n
+	depends on GRAPHICS_LVGL
+	---help---
+		Enable the FOCPilot oscilloscope UI (id/iq current + speed charts)
+
+if EXAMPLES_FOCSCOPE
+
+config EXAMPLES_FOCSCOPE_PRIORITY
+	int "focscope task priority"
+	default 100
+
+config EXAMPLES_FOCSCOPE_STACKSIZE
+	int "focscope stack size"
+	default 40960
+
+config EXAMPLES_FOCSCOPE_INPUT_DEVPATH
+	string "Touchscreen device path"
+	default "/dev/input0"
+	depends on INPUT_TOUCHSCREEN
+	---help---
+		The path to the touchscreen device. Default: "/dev/input0"
+
+config EXAMPLES_FOCSCOPE_AI_TEST
+	tristate "AI Tuner test program"
+	default n
+	depends on LIB_CURL
+	---help---
+		FOCPilot AI Tuner test program.
+		Tests MiMo API integration for motor PI parameter calculation.
+
+if EXAMPLES_FOCSCOPE_AI_TEST
+
+config EXAMPLES_FOCSCOPE_AI_TEST_PRIORITY
+	int "ai_tuner_test task priority"
+	default 100
+
+config EXAMPLES_FOCSCOPE_AI_TEST_STACKSIZE
+	int "ai_tuner_test stack size"
+	default 16384
+
+endif # EXAMPLES_FOCSCOPE_AI_TEST
+
+config EXAMPLES_FOCSCOPE_AI_TUNER_CAN
+	tristate "AI Tuner CAN app"
+	default n
+	depends on LIB_CURL && CAN
+	---help---
+		FOCPilot AI Tuner CAN application.
+		Listens for motor parameter requests on /dev/canN,
+		computes PI parameters via MiMo API, sends results back.
+		Protocol: focpilot_can_proto.h
+
+if EXAMPLES_FOCSCOPE_AI_TUNER_CAN
+
+config EXAMPLES_FOCSCOPE_AI_TUNER_CAN_PRIORITY
+	int "ai_tuner_can task priority"
+	default 100
+
+config EXAMPLES_FOCSCOPE_AI_TUNER_CAN_STACKSIZE
+	int "ai_tuner_can stack size"
+	default 16384
+
+endif # EXAMPLES_FOCSCOPE_AI_TUNER_CAN
+
+endif # EXAMPLES_FOCSCOPE

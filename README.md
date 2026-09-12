@@ -1,36 +1,94 @@
-# contest2026_327_jiny
+# FOCPilot — AI 整定的 FOC 电机调试示波器
 
-👋 欢迎参加 **2026 首届 openvela AI 硬件开发者大赛**！
-
-这是组委会为你的队伍创建的**专属参赛仓库**（本仓为样例/模板，队伍编号 `327`；你看到的将是你自己的 `contest2026_<编号>_<队伍名>`）。比赛期间，你的全部参赛代码、打包产物与 AI Coding 日志都提交到这里。
-
-> 本仓既是「代码仓」，又内置了一键拉取整套 openvela 工程的 `repo` 清单（manifest）。你只需跟它打交道，**自始至终只动一个文件夹**。
+> 队伍编号 `327` ｜ 队名 `jiny` ｜ 赛道：**AI 硬件产品创新**
 
 ---
 
-## 一、先读这些官方文档
+## 一、作品简介
 
-**通用（所有赛道必读）：**
+**FOCPilot 是一台跑在 openvela 上的「FOC 电机调试示波器 + AI 自整定器」。**
 
-| 文档                                                                                                                                     | 用途                                           |
-| ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| [《大赛总览》](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/contest_overview.md)                        | 赛道、流程、评分、资源，建议先通读             |
-| [《参赛代码提交指南》](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/code_submission_guide.md)           | 仓库获取、提交流程、时间与权限（**以此为准**） |
-| [《AI Coding 日志归集与提交手册》](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/ai_coding_log_guide.md) | 如何导出 AI 对话日志并提交到 `logs/`           |
+调 FOC（磁场定向控制）电机的工程师都有同一个痛点：**PI 参数整定靠试凑**。改一次参数、烧一次板、看一次波形，一轮十几分钟，一个电流环能磨掉一整天。而那些能自动整定的商用工具，动辄绑定特定厂商的驱动板与上位机，一套几万块。
 
-**按你的赛道选读（三选一）：**
+FOCPilot 把这件事拆成两块，用一块 100ask DShanPi R528 开发板全包了：
 
-| 赛道                  | 教程导航                                                                                                                                                 |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 快应用 / 手表应用创新 | [快应用教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/quickapp/quickapp_guide_index.md)                         |
-| AI 硬件产品创新       | [AI 硬件赛道教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/ai_hardware/ai_hardware_guide_index.md)              |
-| 新硬件适配            | [新硬件适配赛道教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/hardware_porting/hardware_porting_guide_index.md) |
+| | 做什么 | 怎么做的 |
+|---|---|---|
+| **看得见** | 实时显示电机的 id / iq / 转速波形 | R528 通过 CAN 总线以 100 Hz 接收驱动板遥测，LVGL 绘制滚动示波器 |
+| **算得出** | 自动算出电流环 / 速度环的 6 个 PI 参数 | 把电机参数（Rs / Ld / Lq / Ke / 极对数）交给大模型，由 MiMo 推理出参数，再经**白名单校验**后从 CAN 下发回驱动板 |
+
+**核心亮点：AI 不直接控制电机，只输出「建议值」，且必须过数学白名单。**
+
+这是本项目最重要的一条设计决策。大模型会算错——这是事实，不值得赌。所以整定链路里加了一道闸门：AI 给出的 6 个 PI 参数，必须落在**经典控制理论解算出的理论值 ±50% 区间内**才允许下发：
+
+```
+ωc       = 2π × f_sw / 15          电流环带宽
+Kp_理论  = L × ωc                   Ki_理论 = R × ωc
+速度环   = 电流环带宽 / 10
+```
+
+超出区间的结果被直接拒绝，返回 `FOC_TUNE_WHITELIST_FAIL`，电机保持原参数。**AI 负责在合理范围内给出好参数，白名单负责保证它永远不会给出致命参数**——这才是 AI 落到硬件上该有的形态：让模型做它擅长的（在约束内搜索、权衡用途偏好），把安全边界交给确定性代码。
+
+另一个亮点是**全链路闭环，不是玩具 demo**：从 CAN 采集 → 屏幕波形 → 用户点击「AI 调试」→ 参数上传 → 大模型推理 → 白名单校验 → 结果下发 → 驱动板生效，这条链路在真机上跑通了，连的是真实的 STM32G4 驱动板 + 真实电机。
 
 ---
 
-## 二、第一步：拉取完整工程
+## 二、选题方向
 
-用组委会提供的命令一键拉取「openvela 全量源码 + 你的专属仓」：
+**AI 硬件产品创新**。
+
+理由：本项目满足赛道对「AI 落地」的硬要求——**至少落地图形 / AI / 多媒体之一**，这里图形（LVGL 示波器）与 AI（大模型整定）两条都占了，且二者构成一个完整的产品闭环，而非各自独立的两个演示。
+
+同时它解决了真实场景里的真实痛点（电机调试费时、商用整定工具昂贵且封闭），具备商品化潜力：这套代码可以低成本移植到任何带 CAN 的 openvela 板子上，作为电机厂商的配套调试工具。
+
+---
+
+## 三、目录结构
+
+```text
+contest2026_327_jiny/
+├── app/focscope/            # 作品全部代码（唯一需要开发的地方）
+│   ├── focscope.c           #   主程序入口：数据源选择 + LVGL 初始化
+│   ├── scope_ui.c/.h        #   示波器界面（LVGL，2000 行）
+│   ├── scope_data_can.c     #   CAN 采集线程：解析 0x501/0x502 遥测帧
+│   ├── scope_data_sim.c     #   仿真数据源（无硬件时也能跑起来看 UI）
+│   ├── scope_data.h         #   数据源抽象层接口
+│   ├── wifi_ui.c/.h         #   WiFi 连接界面（板载 RTL8733BS）
+│   ├── foc_ai_tuner.c/.h    #   ★ AI 整定核心：MiMo API 调用 + 白名单校验
+│   ├── ai_tuner_test.c      #   AI 整定命令行测试程序
+│   ├── ai_tuner_can.c       #   ★ AI 整定 CAN 服务：监听请求 → 算 → 回发
+│   ├── ai_tuner_ui.c/.h     #   AI 整定界面
+│   ├── focpilot_can_proto.h #   ★ 双端共用 CAN 协议头（R528 ↔ STM32 完全一致）
+│   ├── FOCPILOT_CAN_PROTOCOL.md  # 遥测协议规格书（0x501/0x502，含 STM32 参考实现）
+│   ├── AI_TUNER_README.md        # AI 整定模块说明
+│   ├── font_puhui_20_4.c    #   中文字库（普黑 20px，LVGL 格式）
+│   ├── Kconfig / Make.defs / Makefile
+├── board/r528s3_config/
+│   └── defconfig            # 板级配置：开好 CAN / LVGL / WiFi / libcurl / 本应用
+├── logs/wx112233030524/     # AI Coding 日志（官方采集器导出，含 manifest.json）
+├── contest2026_327_jiny.xml # repo manifest：把 app/focscope 软链进编译树
+└── README.md                # 本文件
+```
+
+### 关于 manifest
+
+本仓通过 `contest2026_327_jiny.xml` 里的 `<linkfile>` 把 `app/focscope/` 软链到 openvela 编译树的 `apps/examples/focscope`：
+
+```xml
+<project path="contest2026_327_jiny" name="contest2026_327_jiny">
+  <linkfile src="app/focscope" dest="apps/examples/focscope"/>
+</project>
+```
+
+**生产仓库零改动。** `apps/examples/Make.defs` 本身是 `include $(wildcard $(APPDIR)/examples/*/Make.defs)`，`apps/examples/Kconfig` 由 `apps/tools/mkkconfig.sh` 自动生成——所以新目录放进去就被自动发现，不需要动 `apps/` 里任何一行代码。
+
+板级配置 `board/r528s3_config/defconfig` **不做软链**：openvela 的 `build.sh` 接受任意 board config 路径，直接把它作为参数传进去即可。
+
+---
+
+## 四、运行方式
+
+### 1. 拉取工程
 
 ```bash
 repo init -u https://github.com/open-vela/contest2026_327_jiny \
@@ -38,111 +96,116 @@ repo init -u https://github.com/open-vela/contest2026_327_jiny \
 repo sync -c -j8
 ```
 
-同步后，你的整个仓库位于工作区的 `contest2026_327_jiny/`，openvela 全量源码在外层（`nuttx/`、`apps/`、`packages/`、`vendor/` 等）。
+### 2. 编译
 
----
-
-## 三、第二步：在哪里写代码
-
-**只在自己的仓目录 `contest2026_327_jiny/` 里开发。** 不同作品形态放在对应子目录，manifest 会通过 `<linkfile>` 把它们**软链**到 openvela 编译树该在的位置——你不用手动 copy：
-
-| 作品形态 | 你的代码放这里             | 系统自动映射到                                 |
-| -------- | -------------------------- | ---------------------------------------------- |
-| 应用     | `app/hello_app/`           | `packages/demos/contest2026_327_hello_app`     |
-| 快应用   | `quickapp/hello_quickapp/` | `packages/apps/contest2026_327_hello_quickapp` |
-| 板级适配 | `board/contest_board/`     | `vendor/openvela/boards/contest2026_327_board` |
-
-> 用不到的形态目录可以删掉；新增作品时按同样规则加子目录，并在 `contest2026_327_jiny.xml` 里补一条 `<linkfile>` 映射即可。**生产仓库（packages/nuttx/vendor 等）零改动。**
-
-建议仓库目录约定（便于评委定位）：
-
-```text
-app/ | quickapp/ | board/   # 你的作品代码
-logs/                       # AI Coding 日志（主动导出后提交，格式见 logs/README.md）
-README.md                   # 作品说明（提交前请改成你自己的，见第六节）
-```
-
-> 仓内附带了一个 `.gitignore.example`，给出了**编译产物**等不需要进仓的文件示例。如需启用，`cp .gitignore.example .gitignore` 后按需增删即可。**注意 `logs/` 下最终导出的 AI Coding 日志必须提交，不要忽略。**
->
-> `logs/` 的目录结构与提交格式见 [logs/README.md](logs/README.md)。
-
----
-
-## 四、第三步：编译与运行
-
-编译/运行步骤随作品形态不同而不同，请参考你所在赛道的教程导航：
-
-- 快应用 / 手表应用：[快应用教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/quickapp/quickapp_guide_index.md)（含模拟器与开发板部署）。
-- AI 硬件产品创新：[AI 硬件赛道教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/ai_hardware/ai_hardware_guide_index.md)（环境搭建、编译烧录、Skill 开发）。
-- 新硬件适配：[新硬件适配赛道教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/hardware_porting/hardware_porting_guide_index.md)（BSP 移植、最小 NSH 基线）。
-
-子目录已通过 manifest 中的 `<linkfile>` 软链进 openvela 编译树，因此构建在 openvela 工作区**根目录**（即你这个仓的上一级）进行。openvela 使用 `build.sh` 作为统一入口，接收一个 **board config 路径**作为参数：
+在 openvela 工作区**根目录**（即本仓的上一级）：
 
 ```bash
-# 进入 openvela 工作区根目录（你的仓的上一级）
-cd ..
-
-# 通用语法：第一个参数是 board config 路径，第二个参数可以是 menuconfig / distclean 等
-./build.sh <board-config-path> [menuconfig|distclean] [-j8]
+./build.sh contest2026_327_jiny/board/r528s3_config
 ```
 
-> 具体的 board config 路径、目标产物、模拟器/真机部署方式请以你所在赛道的教程导航为准。本仓 `app/` `quickapp/` `board/` 三个示例骨架对应的 Kconfig 选项可通过 `menuconfig` 启用。
+产物：`nuttx/vela_nsh.bin`（以及 `vendor/allwinnertech/lichee/board/r528s3/velaevb1_nand/configs/nsh.fex`）。
+
+> 本仓的 `defconfig` 已开好全部所需选项，**无需再跑 menuconfig**：
+> `CONFIG_EXAMPLES_FOCSCOPE=y`、`CONFIG_EXAMPLES_FOCSCOPE_AI_TEST=y`、
+> `CONFIG_EXAMPLES_FOCSCOPE_AI_TUNER_CAN=y`、`CONFIG_R528_CAN=y`、
+> `CONFIG_GRAPHICS_LVGL=y`、`CONFIG_LIB_CURL=y`、`CONFIG_IEEE80211_REALTEK_WIFI_RTL8733BS=y`
+
+### 3. 烧录与运行
+
+烧录到 100ask DShanPi R528 后，NSH 中：
+
+```bash
+# ① 无硬件也能看 UI —— 仿真数据源
+nsh> focscope
+
+# ② 接上驱动板 —— CAN 实时遥测（/dev/can0，500 kbps）
+nsh> focscope can 0
+
+# ③ AI 整定（命令行测试，直接传电机参数）
+nsh> ai_tuner_test 0.5 0.001 0.01 4 2
+#   参数依次是：Rs(Ω) Ld(H) Ke(V·s/rad) 极对数 用途(0云台/1航模/2机器人关节)
+
+# ④ AI 整定 CAN 服务（接收驱动板请求 → 计算 → 回发）
+nsh> ai_tuner_can 0
+```
+
+### 4. 让 AI 整定真正跑起来：填 API Key
+
+`foc_ai_tuner.c` 中预留了占位符（**本仓库公开，故不提交真实密钥**）：
+
+```c
+#define MIMO_API_KEY    "YOUR_MIMO_API_KEY"
+```
+
+把它换成你自己的 MiMo API key（[控制台](https://platform.xiaomimimo.com/console)）后重新编译即可。
+整定链路其余部分（CAN 收发、白名单、下发）不依赖网络，只有这一个字符串需要填。
+
+### 5. 驱动板侧
+
+驱动板（STM32G4）需要按 `app/focscope/FOCPILOT_CAN_PROTOCOL.md` 广播遥测帧，并按
+`app/focscope/focpilot_can_proto.h` 响应整定请求。两份文档都给了**拷贝即用的 HAL 参考实现**
+（FDCAN 配置、发送函数、10 ms 周期触发位置）。
 
 ---
-
-## 五、第四步：提交作品
-
-1. **fork** 你的专属仓 → 开发 → `git commit` 并推送 → 向专属仓发起 **Pull Request**，可**自行 review 并合入**（无需等组委会）。
-2. **AI Coding 日志**：与 AI 工具的对话会自动记录到本机 staging（不会自动上传），需你**主动导出/打包**选定会话到仓内 `logs/` 目录后一并提交。详见[《AI Coding 日志归集与提交手册》](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/ai_coding_log_guide.md)。
-3. 若需改动 **nuttx 等公共仓库**，不在本仓改，而是 fork 对应公共仓、以 PR 提交到 `dev-ai-contest-2026` 分支，由组委会 review 后合入。
-
-> ⏰ **提交作品截止：9 月 20 日**。截止后统一收回 push 权限，仍可查看 / clone。
->
-> 获奖后再按要求将作品 PR 至 openvela 上游对应仓库（走标准 PR + CI 流程）。
-
-### 关于 PR 与 CLA
-
-- 本仓所有改动通过 **Pull Request** 合入（分支保护强制，可自行合入自己的 PR）。
-- 首次贡献需在[**官网签署 CLA**](https://openvela.com/#/community/cla)；PR 上会自动跑 `cla/signature` 检查，在官网签署成功后，在 PR 评论 `/check-cla` 复检即可通过。
-
----
-
-## 六、提交前：把本 README 改成你的作品说明
-
-本文件目前是组委会给的**使用说明书**。**作品提交前，请把它替换成你自己作品的说明**，方便评委快速了解你做了什么、怎么跑起来。建议至少包含以下内容：
-
-```markdown
-# <你的作品名>
-
-## 一、作品简介
-<一句话/一段话说明这个作品是什么、解决什么问题、亮点在哪>
-
-## 二、选题方向
-<快应用 / 手表应用创新 ｜ AI 硬件产品创新 ｜ 新硬件适配 ｜ 自定方向，并简述理由>
-
-## 三、目录结构
-<列出你这个仓里各目录/文件的作用，例如：>
-- `app/xxx/`        — <说明>
-- `board/xxx/`      — <说明>
-- `quickapp/xxx/`   — <说明>
-- `logs/`           — AI Coding 日志
-- `docs/` 或其他    — <说明>
-
-## 四、运行方式
-<拉取工程后，如何编译、烧录/部署、运行的完整步骤；最好能让评委照着一步步复现>
 
 ## 五、AI Coding 使用说明
-<说明本作品如何借助 AI 辅助开发：
-- 在需求拆解 / 方案设计 / 编码 / 调试 / 文档等环节如何与 AI 协作；
-- AI 对开发效率或质量带来的实际帮助。
-完整对话日志见 logs/ 目录>
-```
 
-> 提示：将会根据「作品本身 + 你的 README 说明 + `logs/` 里的 AI Coding 日志」来理解和评估你的作品，README 写清楚很重要。
+本作品从零到真机跑通，全程使用 **Claude Code** 辅助开发，完整对话日志见 `logs/wx112233030524/`。
+
+### AI 参与到了哪些环节
+
+| 环节 | AI 做了什么 |
+|---|---|
+| **需求拆解与选型** | 讨论「示波器 + 整定」这个组合的产品形态，确定 AI 只出建议值、白名单兜底的安全架构 |
+| **方案设计** | 设计 CAN 遥测帧格式（0x501/0x502）、整定协议（0x101–0x104 / 0x201–0x204），双端共用同一头文件保证一致性 |
+| **编码** | 2000 行的 LVGL 示波器界面、CAN 采集线程、MiMo API 客户端、白名单校验器 |
+| **调试验证** | 大量真机日志分析。例如 CAN 通信一直不通，AI 逐层排查（时钟树 → 时序参数 → 收发器），最终用示波器实测确认 **R528 CAN 模块时钟是 24 MHz 而非预期的 40 MHz**，据此重算 500 kbps 时序（brp=2 / tseg1=15 / tseg2=8），问题解决 |
+| **死锁排查** | 定位并修复 100ask 版本 LVGL 的 `lvgl_lock()` 死锁（多次加锁导致自锁），修复后 UI 稳定运行 |
+| **文档** | 协议规格书、模块 README、代码注释 |
+
+### AI 带来的实际帮助
+
+最直接的是**排障效率**：CAN 不通这类问题，人工排查通常要在「硬件 / 驱动 / 时序 / 应用」之间反复试错，一轮就是一次编译烧录。AI 在这里的价值是能同时读懂驱动源码、示波器波形记录和串口日志，快速排除掉不可能的层级，把问题收敛到「模块时钟频率」这一个点上。
+
+其次是**代码量**：LVGL 界面样板代码密度极高且高度重复，这部分交给 AI 后，人的精力集中在真正的设计决策上（安全架构、协议设计、整定策略）。
+
+> 需要说明的是：AI 生成的代码并非照单全收。协议字段、时钟频率、时序参数这类**必须与硬件一致**的地方，全部经过真机验证与示波器实测；CAN 时序就是 AI 最初按错误时钟算出来、再由实测纠正的。日志里完整保留了这些往返过程。
+
+### 关于日志目录
+
+`logs/` 由官方 AI Coding 采集器（`claude-code-collector`）导出，含 `manifest.json`（schema 1.0）。
+其中 API Key、WiFi 密码等敏感信息已全部替换为占位符。
 
 ---
 
-## 附：仓库命名规范
+## 六、当前状态与已知限制
 
-`contest2026_<编号>_<队伍名>` — 编号三位零填充；队名 slug（全小写、英文/拼音、连字符）。例：`contest2026_327_jiny`。
-（仓库由组委会统一创建，**每队仅一个仓**，无需自行命名。）
+**已在真机验证：**
+
+- ✅ openvela 编译通过，生成可烧录镜像
+- ✅ LVGL 示波器 UI 在 R528 上稳定运行（触屏交互、滚动波形）
+- ✅ CAN 通信打通，500 kbps 下稳定接收遥测帧（时序经示波器实测校准）
+- ✅ WiFi 连接（板载 RTL8733BS）
+- ✅ MiMo API 调用成功返回 PI 参数，白名单校验生效
+
+**已知限制：**
+
+- 驱动板侧代码（STM32G4 工程）不在本仓，本仓只提供协议规格与参考实现；完整复现需自备驱动板
+- AI 整定需要联网，无网络时命令行会明确报错退出，不影响示波器功能
+- 当前白名单是固定 ±50% 区间，尚未按电机用途（云台/航模/机器人）做差异化收紧——这是下一步计划
+
+---
+
+## 附：AI Coding 日志格式
+
+```
+logs/wx112233030524/
+├── manifest.json                                 # schema 1.0, team_id, sessions[]
+└── 2026-09-12/
+    └── claude-code__<session-id>.jsonl           # 逐事件记录（ts/role/text/tool）
+```
+
+---
+
+*本作品采用 Apache License 2.0 许可。*

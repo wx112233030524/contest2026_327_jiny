@@ -1,0 +1,10 @@
+############################################################################
+# apps/examples/focscope/Make.defs
+#
+# FOCPilot oscilloscope UI example
+#
+############################################################################
+
+ifneq ($(CONFIG_EXAMPLES_FOCSCOPE)$(CONFIG_EXAMPLES_FOCSCOPE_AI_TEST),)
+CONFIGURED_APPS += $(APPDIR)/examples/focscope
+endif
